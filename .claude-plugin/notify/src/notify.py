@@ -83,7 +83,8 @@ try {{
     $nodes.Item(1).InnerText = "{message}"
 
     $doc = [Windows.Data.Xml.Dom.XmlDocument]::new()
-    $doc.LoadXml($xml.GetXml())
+    $xmlStr = $xml.GetXml() -replace '<toast>', '<toast duration="long">'
+    $doc.LoadXml($xmlStr)
     $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(
         "Claude Code").Show($toast)
@@ -108,9 +109,9 @@ Add-Type -AssemblyName System.Windows.Forms
 $n = [System.Windows.Forms.NotifyIcon]::new()
 $n.Icon = [System.Drawing.SystemIcons]::Information
 $n.Visible = $true
-$n.ShowBalloonTip(8000, '{title}', '{message}',
+$n.ShowBalloonTip(30000, '{title}', '{message}',
     [System.Windows.Forms.ToolTipIcon]::Info)
-Start-Sleep -Seconds 9
+Start-Sleep -Seconds 31
 $n.Dispose()
 """
     subprocess.Popen(
