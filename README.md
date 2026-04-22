@@ -1,6 +1,6 @@
 # claude-notify
 
-> Claude Code **Stop Hook** 插件：对话含触发关键字时，通过 Windows Toast API 弹出系统通知，标题自动显示当前项目名。
+> Claude Code `/notify` 插件：输入 `/notify [消息]` 即可向 Windows 桌面发送 Toast 通知，通知常驻屏幕直到手动关闭。
 
 无需安装任何 Python 第三方库，完全依赖系统自带的 PowerShell + Windows Runtime。
 
@@ -12,69 +12,52 @@
 ┌─────────────────────────────────┐
 │ Claude Code [claude_notify]     │
 │ 任务已执行完成                   │
+│                            [×]  │
 └─────────────────────────────────┘
 ```
 
+通知使用 `scenario="reminder"` 模式，常驻右下角直到用户手动关闭。
+
 ---
 
-## 触发关键字
+## 使用方式
 
-在 Claude Code 对话消息中写入以下任一关键字即可触发：
-
-| 关键字 | 说明 |
-|--------|------|
-| `[notify]` | 默认通知 |
-| `[notify: 自定义内容]` | 自定义通知正文 |
-| `-notify` / `--notify` | 同 `[notify]` |
-| `!done` | 同 `[notify]` |
-| `[完成通知]` / `!通知` | 同 `[notify]` |
-
-**示例：**
+在 Claude Code 对话中输入：
 
 ```
-帮我完成数据库迁移脚本 [notify: 迁移脚本已生成]
+/notify                          # 发送默认通知：任务已执行完成
+/notify 部署完成，请检查日志      # 发送自定义消息
 ```
 
 ---
 
-## 快速安装
+## 安装
 
-```bat
-git clone https://github.com/neronotdante/claude_notify.git
-cd claude_notify
-.claude-plugin\notify\src\install.bat
-```
+### 方式一：通过 Plugin Marketplace（推荐）
 
-`install.bat` 自动完成：
-
-1. 将脚本绝对路径写入 `.claude-plugin/manifest.json`
-2. 在 `~/.claude/settings.json` 注册插件（`extraKnownMarketplaces` + `enabledPlugins`）
-3. 清理旧的全局 Stop hook（避免重复触发）
-
-> 重启 Claude Code 后生效。
-
-### 手动配置（可选）
-
-在 `~/.claude/settings.json` 的 `hooks.Stop` 中添加：
+在 `~/.claude/settings.json` 中添加：
 
 ```json
 {
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"<绝对路径>/.claude-plugin/notify/src/notify.py\"",
-            "timeout": 20
-          }
-        ]
+  "extraKnownMarketplaces": {
+    "claude-notify": {
+      "source": {
+        "source": "directory",
+        "path": "<claude_notify 本地路径>"
       }
-    ]
+    }
+  },
+  "enabledPlugins": {
+    "claude-notify@claude-notify": true
   }
 }
 ```
+
+重启 Claude Code 后自动识别，`/notify` 指令即可使用。
+
+### 方式二：手动注册全局 Hook（备选）
+
+若不使用插件系统，可在 `~/.claude/settings.json` 中直接添加 Stop hook（但此方式为被动触发，已由本项目废弃）。
 
 ---
 
@@ -83,12 +66,14 @@ cd claude_notify
 ```
 claude_notify/
 ├── .claude-plugin/
-│   ├── manifest.json               # 插件声明 + Stop hook 配置
-│   ├── run.py                      # 路径 wrapper（备用）
+│   ├── marketplace.json        # Marketplace 声明
+│   ├── plugin.json             # 插件元数据 + command 注册
 │   └── notify/
 │       └── src/
-│           ├── notify.py           # 核心脚本
-│           └── install.bat         # 一键安装（Windows）
+│           ├── notify.py       # 核心脚本（支持直接调用 + Hook 兼容）
+│           └── install.bat     # 旧版手动安装（已废弃）
+├── commands/
+│   └── notify.md               # /notify slash command 定义
 └── README.md
 ```
 
@@ -97,37 +82,41 @@ claude_notify/
 ## 实现原理
 
 ```
-用户消息含触发关键字
+用户输入 /notify [消息]
         │
         ▼
-Claude 响应结束 ──► Stop 事件触发
+Claude Code 加载 commands/notify.md
         │
         ▼
-notify.py 从 stdin 读取 JSON payload
-  {session_id, transcript_path, stop_hook_active}
-        │
-        ├─ stop_hook_active = true ──► 退出（防递归）
+Claude 调用 Bash 执行：
+  python notify.py "<消息>"
         │
         ▼
-读取 transcript.jsonl
-  倒序扫描最近 10 条用户消息
-        │
-        ├─ 无关键字 ──► 静默退出
-        │
-        ▼
-读取消息顶层 cwd 字段 ──► Path.name ──► 项目名
+notify.py 直接调用模式
+  title   = "Claude Code [当前工作目录名]"
+  message = 用户消息 or "任务已执行完成"
         │
         ▼
-构建通知
-  title   = "Claude Code [项目名]"
-  message = 自定义内容 or "任务已执行完成"
-        │
-        ▼
-PowerShell → ToastNotificationManager  ──► 成功 ──► 通知弹出
+PowerShell → ToastNotificationManager
+  scenario="reminder"           ──► 成功 ──► 通知常驻屏幕
         │ 失败
         ▼
 PowerShell → NotifyIcon 托盘气泡（降级）
 ```
+
+---
+
+## 同类方案对比
+
+| 项目 | 触发方式 | 平台 | 特点 |
+|------|----------|------|------|
+| **本项目** | `/notify` slash command | Windows | Plugin 结构，主动触发，常驻通知 |
+| [claude-notifications-go](https://github.com/777genius/claude-notifications-go) | Stop Hook | 跨平台 | 支持 Slack/Telegram webhook |
+| [claude-code-notify-powershell](https://github.com/soulee-dev/claude-code-notify-powershell) | Stop Hook | Windows | 纯 PowerShell，零依赖 |
+| [cctoast-wsl](https://github.com/claudes-world/cctoast-wsl) | Stop Hook | WSL→Windows | 支持图片、声音 |
+| [code-notify](https://github.com/mylee04/code-notify) | Stop Hook | 跨平台 | npm/Homebrew 安装 |
+
+> 大多数同类方案使用 **Stop Hook 被动触发**（Claude 每次停止都检查），本项目采用 **slash command 主动触发**，按需发送，更精准。
 
 ---
 
