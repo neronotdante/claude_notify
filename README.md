@@ -106,20 +106,6 @@ PowerShell → NotifyIcon 托盘气泡（降级）
 
 ---
 
-## 同类方案对比
-
-| 项目 | 触发方式 | 平台 | 特点 |
-|------|----------|------|------|
-| **本项目** | `/notify` slash command | Windows | Plugin 结构，主动触发，常驻通知 |
-| [claude-notifications-go](https://github.com/777genius/claude-notifications-go) | Stop Hook | 跨平台 | 支持 Slack/Telegram webhook |
-| [claude-code-notify-powershell](https://github.com/soulee-dev/claude-code-notify-powershell) | Stop Hook | Windows | 纯 PowerShell，零依赖 |
-| [cctoast-wsl](https://github.com/claudes-world/cctoast-wsl) | Stop Hook | WSL→Windows | 支持图片、声音 |
-| [code-notify](https://github.com/mylee04/code-notify) | Stop Hook | 跨平台 | npm/Homebrew 安装 |
-
-> 大多数同类方案使用 **Stop Hook 被动触发**（Claude 每次停止都检查），本项目采用 **slash command 主动触发**，按需发送，更精准。
-
----
-
 ## 系统要求
 
 | 项目 | 要求 |
