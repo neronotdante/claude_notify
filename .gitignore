@@ -1,0 +1,19 @@
+# 单元测试
+tests/
+.pytest_cache/
+
+# 流程图 / 文档
+docs/
+
+# Python 字节码
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 本地 Claude Code 项目配置
+.claude/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
