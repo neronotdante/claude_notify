@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """
-Claude Code Windows 通知 Hook
-当对话包含特定关键字或特殊命令时，通过 Windows API 弹出系统通知。
-
-触发方式（在对话中包含以下任一关键字）：
-  [notify]                   -> 弹出默认完成通知，标题含当前项目名
-  [notify: 自定义消息内容]    -> 弹出自定义消息，标题含当前项目名
-  --notify / -notify         -> 同 [notify]
-  !done                      -> 同 [notify]
-  [完成通知]                  -> 同 [notify]
+Claude Code Windows 通知
+支持两种调用方式：
+  skill 直接调用: python notify.py [消息内容]   <- /notify 指令触发
+  Stop hook 调用: 从 stdin 读取 JSON            <- 保留兼容，但默认不启用
 """
 
 import sys
@@ -17,15 +12,6 @@ import re
 import subprocess
 import os
 from pathlib import Path
-
-NOTIFY_PATTERNS = [
-    (r'\[notify:\s*(.+?)\]', True),   # 带自定义消息
-    (r'\[notify\]', False),
-    (r'--?notify', False),
-    (r'!done', False),
-    (r'\[完成通知\]', False),
-    (r'!通知', False),
-]
 
 
 def get_project_name(transcript_path: str) -> str:
@@ -83,7 +69,7 @@ try {{
     $nodes.Item(1).InnerText = "{message}"
 
     $doc = [Windows.Data.Xml.Dom.XmlDocument]::new()
-    $xmlStr = $xml.GetXml() -replace '<toast>', '<toast duration="long">'
+    $xmlStr = $xml.GetXml() -replace '<toast>', '<toast scenario="reminder">'
     $doc.LoadXml($xmlStr)
     $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(
@@ -166,6 +152,17 @@ def find_trigger(texts: list[str]) -> tuple[bool, str]:
 
 
 def main() -> None:
+    # 直接调用模式：python notify.py [消息]（来自 /notify skill）
+    if sys.argv[1:]:
+        message = ' '.join(sys.argv[1:]).strip() or "任务已执行完成"
+        project = Path(os.getcwd()).name
+        title = f"Claude Code [{project}]" if project else "Claude Code"
+        ok = send_toast(title, message)
+        if not ok:
+            send_balloon(title, message)
+        return
+
+    # Hook 模式：从 stdin 读取（兼容保留，当前未启用）
     raw = sys.stdin.read().strip()
     try:
         data = json.loads(raw) if raw else {}
@@ -179,18 +176,12 @@ def main() -> None:
     if not transcript_path or not os.path.isfile(transcript_path):
         sys.exit(0)
 
-    texts = extract_user_texts(transcript_path)
-    triggered, message = find_trigger(texts)
-
-    if not triggered:
-        sys.exit(0)
-
     project = get_project_name(transcript_path)
     title = f"Claude Code [{project}]" if project else "Claude Code"
 
-    ok = send_toast(title, message)
+    ok = send_toast(title, "任务已执行完成")
     if not ok:
-        send_balloon(title, message)
+        send_balloon(title, "任务已执行完成")
 
 
 if __name__ == "__main__":

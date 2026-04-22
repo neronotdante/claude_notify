@@ -1,0 +1,13 @@
+{
+  "name": "claude-notify",
+  "owner": {
+    "name": "local"
+  },
+  "plugins": [
+    {
+      "name": "claude-notify",
+      "source": "./",
+      "description": "Windows Toast 通知：使用 /notify [消息] 指令主动发送桌面通知"
+    }
+  ]
+}

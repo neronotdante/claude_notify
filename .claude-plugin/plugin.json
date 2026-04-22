@@ -1,0 +1,11 @@
+{
+  "name": "claude-notify",
+  "description": "Windows Toast 通知：使用 /notify [消息] 指令主动发送桌面通知，标题自动显示当前项目名。",
+  "version": "1.1.0",
+  "author": {
+    "name": "local"
+  },
+  "commands": [
+    "./commands/notify.md"
+  ]
+}
