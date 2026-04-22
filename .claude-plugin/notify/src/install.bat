@@ -21,13 +21,12 @@ python --version >nul 2>&1
 if errorlevel 1 ( echo [错误] 未找到 Python & pause & exit /b 1 )
 echo [OK] Python 已找到
 
-:: 检查脚本存在
 if not exist "%NOTIFY_SCRIPT%" (
     echo [错误] notify.py 不存在: %NOTIFY_SCRIPT%
     pause & exit /b 1
 )
 
-:: 1. 将 manifest.json 里的占位符替换为真实路径
+:: 1. 将 manifest.json 占位符替换为真实路径（仅供展示，实际 hook 写 settings.json）
 set SAFE_PATH=%NOTIFY_SCRIPT:\=/%
 powershell -NonInteractive -NoProfile -Command ^
   "$m = '%MANIFEST:\=/%'; ^
@@ -37,13 +36,28 @@ powershell -NonInteractive -NoProfile -Command ^
        $txt = $txt -replace 'NOTIFY_SCRIPT_PATH', \"python \`\"$s\`\"\"; ^
        Set-Content $m $txt -Encoding utf8; ^
        Write-Host '[OK] manifest.json 路径已写入' ^
-   } else { Write-Host '[OK] manifest.json 路径已是最新' }"
+   } else { Write-Host '[OK] manifest.json 已是最新' }"
 
-:: 2. 注册插件到 settings.json，并清理旧的全局 Stop hook
+:: 2. 将 Stop hook 直接写入 settings.json（插件 manifest 不会自动注入 hook）
 powershell -NonInteractive -NoProfile -Command ^
  "$f = '%SETTINGS:\=/%'; ^
+  $s = '%SAFE_PATH%'; ^
   $j = Get-Content $f -Raw | ConvertFrom-Json; ^
   $pd = '%PLUGIN_ROOT:\=/%'; ^
+  if (-not $j.PSObject.Properties['hooks']) { ^
+      $j | Add-Member -NotePropertyName hooks -NotePropertyValue ([PSCustomObject]@{}) ^
+  }; ^
+  if (-not $j.hooks.PSObject.Properties['Stop']) { ^
+      $j.hooks | Add-Member -NotePropertyName Stop -NotePropertyValue @() ^
+  }; ^
+  $exists = $j.hooks.Stop | Where-Object { ^
+      $_.hooks | Where-Object { $_.command -like '*notify.py*' } }; ^
+  if (-not $exists) { ^
+      $hook = [PSCustomObject]@{ type='command'; command=\"python \`\"$s\`\"\"; timeout=20 }; ^
+      $entry = [PSCustomObject]@{ matcher=''; hooks=@($hook) }; ^
+      $j.hooks.Stop = @($j.hooks.Stop) + $entry; ^
+      Write-Host '[OK] hooks.Stop 已写入 settings.json' ^
+  } else { Write-Host '[OK] hooks.Stop 已存在，跳过' }; ^
   if (-not $j.PSObject.Properties['extraKnownMarketplaces']) { ^
       $j | Add-Member -NotePropertyName extraKnownMarketplaces -NotePropertyValue ([PSCustomObject]@{}) ^
   }; ^
@@ -53,28 +67,27 @@ powershell -NonInteractive -NoProfile -Command ^
       $j | Add-Member -NotePropertyName enabledPlugins -NotePropertyValue ([PSCustomObject]@{}) ^
   }; ^
   $j.enabledPlugins | Add-Member -Force -NotePropertyName 'claude-notify@claude-notify' -NotePropertyValue $true; ^
-  if ($j.PSObject.Properties['hooks'] -and $j.hooks.PSObject.Properties['Stop']) { ^
-      $kept = @($j.hooks.Stop | Where-Object { ^
-          -not ($_.hooks | Where-Object { $_.command -like '*notify.py*' }) }); ^
-      if ($kept.Count -eq 0) { $j.hooks.PSObject.Properties.Remove('Stop') } ^
-      else { $j.hooks.Stop = $kept }; ^
-      if ($j.hooks.PSObject.Properties.Count -eq 0) { $j.PSObject.Properties.Remove('hooks') } ^
-  }; ^
   $j | ConvertTo-Json -Depth 10 | Set-Content $f -Encoding utf8; ^
-  Write-Host '[OK] settings.json 已更新'"
+  Write-Host '[OK] settings.json 更新完成'"
 
 if errorlevel 1 ( echo [错误] settings.json 更新失败 & pause & exit /b 1 )
 
-:: 3. 发送测试通知
+:: 3. 验证 hook 已写入
+echo.
+echo 验证配置...
+python -c "import json,pathlib; j=json.loads(pathlib.Path('%SETTINGS:\=/%').read_text('utf-8')); stops=j.get('hooks',{}).get('Stop',[]); cmds=[h['command'] for e in stops for h in e['hooks'] if 'notify' in h.get('command','')]; print('[OK] 已注册 hook:',cmds[0] if cmds else '未找到！')"
+
+:: 4. 发送测试通知（需要有效 transcript，此处静默退出属正常）
 echo.
 echo 正在发送测试通知...
-echo {"session_id":"install-test","transcript_path":"","stop_hook_active":false} | python "%NOTIFY_SCRIPT%"
-echo (通知需要 transcript_path 有效才会弹出，此测试正常静默)
+echo {"session_id":"install","transcript_path":"","stop_hook_active":false} | python "%NOTIFY_SCRIPT%"
 
 echo.
 echo ============================================
 echo  安装完成！重启 Claude Code 后生效。
-echo  触发关键字：[notify]  -notify  !done  [完成通知]
-echo  自定义消息：[notify: 你的提示文字]
+echo.
+echo  测试方法：在 Claude Code 任意项目对话中发送
+echo    test --notify
+echo  应在 5 秒内收到 Windows 系统通知。
 echo ============================================
 pause
